@@ -9,6 +9,7 @@ const sliderSize = unitPx(3);
 const sliderMargin = `${unitPx(2.5)} ${unitPx(1.5)}`;
 const sliderPadding = `${unitPx()} 0`;
 const dotSize=`${unitPx(2)}`;
+const sliderRailHeight=unitPx();
 const primaryWhite = '#9c9ea1';
 const handleTitleBG='rgba(0,0,0,0.75)';
 
@@ -20,7 +21,7 @@ export const cursorNotAllowed = css`
 `;
 const piSliderRailAndTrack = css`
   position: absolute;
-  height: @slider-rail-height;
+  height: ${sliderRailHeight};
   border-radius: 2px;
   transition: background-color 0.3s;
   z-index: 3;

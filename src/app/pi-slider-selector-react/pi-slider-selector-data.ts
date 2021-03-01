@@ -149,7 +149,7 @@ export const initSlider: PiSliderData = {
     piStep: 0.01,
     piModel: {
       type: PiModelTypeName.Range,
-      value: [155, 155],
+      value: [1800, 155],
     } as PiModelType,
     piMarks: {
       155: '155',

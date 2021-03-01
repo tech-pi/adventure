@@ -2,6 +2,7 @@ import {
   createTrackAndHandleMatcher,
   PiMarkType,
   PiModelWithMatcher,
+  PiSlider,
   PiSliderDataInputType,
   PiValidRangeType,
   SliderMark,
@@ -126,7 +127,7 @@ export function createSliderStyle(
           [position[0]]: valueRatio(value, piMin, piMax) + '%',
           transform: `translate${piVertical ? 'Y' : 'X'}(${
             L.isEqual(piReverse, piVertical) ? '-' : ''
-          }50%);`,
+          }50%)`,
           ...(L.isString(marksWithValid[key])
             ? {}
             : (marksWithValid[key].style as Object)),
@@ -154,4 +155,121 @@ export function createSliderStyle(
   );
   console.log(style);
   return style;
+}
+export function click(
+  e: MouseEvent,
+  step: HTMLElement,
+  marks: SliderMark[],
+  piSlider: PiSlider
+): PiSlider {
+  console.log(e);
+  const piReverse = piSlider.piReverse;
+  const piVertical = piSlider.piVertical;
+  if (piSlider.piDisabled) return;
+  const data = piVertical
+    ? [e.offsetY, step.offsetTop, step.offsetHeight]
+    : [e.offsetX, step.offsetLeft, step.offsetWidth];
+  let withReverseOffset =
+    piReverse === piVertical ? data[0] - data[1] : data[2] + data[1] - data[0];
+  let currRatio = (withReverseOffset / data[2]) * 100;
+  // this.clickStepS.next(() =>
+  return piSlider.freeClick(currRatio, marks, piSlider);
+  // );
+}
+
+// export function mousedownTrack(event: MouseEvent, piSlider: PiSlider) {
+//   if (
+//     piSlider.piDisabled ||
+//     L.isNumber(piSlider.piModel.value) ||
+//     L.isNil(piSlider.piLengthBase)
+//   )
+//     return;
+//   console.log('not prevent...');
+//   this.mousedownTrackS.next({ event, piSlider: { ...piSlider } });
+//   // console.log('mousedown track', event);
+// }
+interface ElementBoundaryAndSize {
+  sliderTop: number;
+  sliderLeft: number;
+  height: number;
+  width: number;
+}
+export function dragTrack(
+  move: MouseEvent,
+  down: {
+    event: MouseEvent;
+    piSlider: PiSlider;
+  }
+) {
+  function caculateHandleOffset(
+    e: MouseEvent,
+    slider: ElementBoundaryAndSize,
+    piReverse: boolean,
+    piVertical: boolean
+  ) {
+    let offset = 0;
+    const data = piVertical
+      ? [e.pageY, slider.sliderTop, slider.height]
+      : [e.pageX, slider.sliderLeft, slider.width];
+    const reverseEqualVertical = piReverse === piVertical;
+    offset = reverseEqualVertical
+      ? data[0] - data[1]
+      : data[2] + data[1] - data[0];
+    if (data[0] > data[2] + data[1])
+      offset = !reverseEqualVertical ? 0 : data[2];
+    if (data[0] < data[1]) offset = !reverseEqualVertical ? data[2] : 0;
+    return { offset, totalLength: data[2] };
+  }
+
+  function caculateDistance2Boundary(
+    element: HTMLElement
+  ): ElementBoundaryAndSize {
+    //输出一个element到浏览器上边界和左边界的距离、高度、宽度
+    const originElement = element;
+    let sliderTop = 0;
+    let sliderLeft = 0;
+    if (!element) return { sliderTop, sliderLeft, height: 0, width: 0 };
+    do {
+      sliderTop += element.offsetTop;
+      sliderLeft += element.offsetLeft;
+      element = element.offsetParent as HTMLElement;
+    } while (element);
+    return {
+      sliderTop,
+      sliderLeft,
+      height: originElement.offsetHeight,
+      width: originElement.offsetWidth,
+    };
+  }
+  console.log(down.piSlider);
+  const originSlider = down.piSlider;
+  const moveData = caculateHandleOffset(
+    move,
+    caculateDistance2Boundary(this.slider.nativeElement),
+    down.piSlider.piReverse,
+    down.piSlider.piVertical
+  );
+  const downData = caculateHandleOffset(
+    down.event,
+    caculateDistance2Boundary(this.slider.nativeElement),
+    down.piSlider.piReverse,
+    down.piSlider.piVertical
+  );
+  console.log(
+    moveData.offset,
+    downData.offset,
+    down.piSlider.piModel,
+    originSlider
+  );
+  const moveRatio = (downData.offset - moveData.offset) / moveData.totalLength;
+  return down.piSlider.dragTrack(moveRatio, originSlider);
+}
+export function handle2Mark(
+  event: Event,
+  value: number,
+  piSlider: PiSlider
+): PiSlider {
+  event.stopPropagation();
+  if (piSlider.piDisabled) return;
+  return piSlider.clickRailDot(value, piSlider);
 }

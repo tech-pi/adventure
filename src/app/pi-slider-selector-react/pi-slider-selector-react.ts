@@ -21,12 +21,14 @@ import {
 } from './pi-slider-selector-data';
 import * as L from 'lodash';
 import {
+  changeFocus,
   click,
   createSliderStyle,
   dragTrack,
   handle2Mark,
   judgePiDataValid,
 } from './pi-slider-selector-logic';
+import emmiter from '../pi-slider/events';
 
 const $E = React.createElement;
 
@@ -66,20 +68,30 @@ export function PiSliderSelector(
         piSlider: PiSlider;
       }> = new Subject();
       const downTrack$ = downTrackS.asObservable();
+      useObservable(() =>
+        downTrack$.pipe(tap((x) => console.log('debug...', x)))
+      );
+      // useObservable(()=>mousemove$.pipe(tap(x=>console.log('move...',x))));
       const dragTrack$ = mousemove$.pipe(
-        windowToggle(downTrack$, () => mouseup$),
-        switchAll(),
+        tap((x) => console.log('...move')),
+        windowToggle(downTrack$.pipe(tap((x) => console.log('...down'))), () =>
+          mouseup$.pipe(tap((x) => console.log('...up', x)))
+        ),
         tap((x) => console.log('dragTrack', x)),
+        switchAll(),
         withLatestFrom(downTrack$),
         map(([move, down]) => dragTrack(move, down))
       );
       useObservable(() =>
         dragTrack$.pipe(
           tap((x) => {
+            console.log(x);
             setPiSlider(x);
           })
         )
       );
+      const afterChangeE = (msg: number | number[]) =>
+        emmiter.emit('afterChange', msg);
       const [piSlider, setPiSlider] = useState<PiSlider>(PiSlider(initSlider));
       const [sliderStyle, setSliderStyle] = useState<{
         track: object;
@@ -101,7 +113,16 @@ export function PiSliderSelector(
       };
 
       console.log(piSlider, sliderStyle);
-      return PiSliderSelectorWrapper(piSlider, sliderStyle, wrappedSetPiSlider,(event:MouseEvent)=>downTrackS.next({event,piSlider}));
+      return PiSliderSelectorWrapper(
+        piSlider,
+        sliderStyle,
+        wrappedSetPiSlider,
+        (event: MouseEvent) => {
+          console.log(event);
+          downTrackS.next({ event, piSlider });
+        },
+        afterChangeE
+      );
     }),
     e
   );
@@ -110,7 +131,8 @@ function PiSliderSelectorWrapper(
   piSlider: PiSlider,
   sliderStyle: SliderStyleType,
   setPiSlider: (piSlider: PiSlider) => void,
-  downTrack:(event:MouseEvent)=>void
+  downTrack: (event: MouseEvent) => void,
+  emitAfterChange:(value:number|number[])=>void
 ) {
   // const piRail = $E('div', {
   //   key: 'pi-slider-rail',
@@ -119,11 +141,24 @@ function PiSliderSelectorWrapper(
   // });
   // var x;
   // const stepR = React.createRef();
+  const [piSliderStepRef, setPiSliderStepRef] = useState<HTMLElement>();
+
+  const piSliderStep = PiSliderStep(
+    sliderStyle.marks,
+    piSlider,
+    setPiSlider,
+    setPiSliderStepRef
+  ); //TODO:
+
+  console.log(piSliderStepRef);
   const piSliderReverse = piControlReverseSlider(
     piSlider,
     sliderStyle,
     setPiSlider,
-    downTrack
+    downTrack,
+    piSliderStep,
+
+  emitAfterChange
   );
   // console.log(stepR,this.refs.step);
   return $E(
@@ -139,7 +174,10 @@ function PiSliderSelectorWrapper(
         piSlider.piVertical ? c.piSliderVertical : '',
         piSlider.piDisabled ? c.piSliderDisabled : ''
       )}`,
-      // onClick: (e) => click(e, this.stepR, sliderStyle.marks, piSlider),
+      onClick: (e) =>
+        setPiSlider(
+          click(e.nativeEvent, piSliderStepRef, sliderStyle.marks, piSlider)
+        ),
     },
     [piSliderReverse]
   );
@@ -149,7 +187,16 @@ function piControlReverseSlider(
   sliderStyle: SliderStyleType,
   setPiSlider: (piSlider: PiSlider) => void,
 
-  downTrack:(event:MouseEvent)=>void
+  downTrack: (event: MouseEvent) => void,
+  piSliderStep: React.DetailedReactHTMLElement<
+    {
+      key: string;
+      className: string;
+    },
+    HTMLElement
+  >,
+
+  emitAfterChange:(value:number|number[])=>void
 ) {
   //Rail
   const piSliderRail = $E('div', {
@@ -168,14 +215,18 @@ function piControlReverseSlider(
     className: `pi-slider-track  ${cx(c.piSliderTrack, c.cursor)}`,
     style: sliderStyle.track,
     // onClick:(e)=>{console.log('222222222',e)},
-    onMouseDown: (e) => downTrack(e.nativeEvent), //TODO:
+    onMouseDown: (e) => {
+      console.log(e);
+      e.stopPropagation();
+      downTrack(e.nativeEvent);
+    }, //TODO:
   });
   //handle
   const handleGroup = sliderStyle.handle.map((h, i) =>
-    PiSliderHandle(h, i, piSlider, sliderStyle.marks)
+    PiSliderHandle(h, i, piSlider, sliderStyle.marks,emitAfterChange)
   );
   //step
-  const piSliderStep = PiSliderStep(sliderStyle.marks, piSlider, setPiSlider);
+  // const piSliderStep = PiSliderStep(sliderStyle.marks, piSlider, setPiSlider);//TODO:
 
   return $E(
     'div',
@@ -194,7 +245,8 @@ function PiSliderHandle(
   handle: object,
   index: number,
   piSlider: PiSlider,
-  marks: SliderMark[]
+  marks: SliderMark[],
+  emitAfterChange:(value:number|number[])=>void
 ) {
   const [showHandleTooltip, setShowHandleTooltip] = useState<boolean>(false); //TODO:
   const tooltipArrowContent = $E('div', {
@@ -217,7 +269,7 @@ function PiSliderHandle(
         piSlider.piTooltipPlacement
       } ${cx(
         c.handleTitle,
-        c[`handle-title-placement-${piSlider.piTooltipPlacement}`]
+        c[`handleTitlePlacement${L.capitalize(piSlider.piTooltipPlacement)}`]
       )}`,
       hidden:
         piSlider.piTooltipVisible !== 'always' &&
@@ -232,6 +284,11 @@ function PiSliderHandle(
       className: `pi-slider-handle ${cx(c.cursor, c.piSliderHandle)}`,
       tabIndex: 0,
       style: handle['style'],
+      onMouseEnter: () => setShowHandleTooltip(true),
+      onMouseLeave: () => setShowHandleTooltip(false),
+      onClick: (e) => e.stopPropagation(),
+      onFocus:()=>changeFocus(true,piSlider.piDisabled,emitAfterChange),
+      onBlur:()=>changeFocus(false,piSlider.piDisabled,emitAfterChange,piSlider.piModel.value,piSlider.piReverse)
     },
     handleTitle
   );
@@ -239,7 +296,8 @@ function PiSliderHandle(
 function PiSliderStep(
   sliderMarks: SliderMark[],
   piSlider: PiSlider,
-  setPiSlider: (piSlider: PiSlider) => void
+  setPiSlider: (piSlider: PiSlider) => void,
+  setPiSliderStepRef: (ref: HTMLElement) => void
 ) {
   const handle2MarkF = (event: Event, value: number) => {
     event.stopImmediatePropagation();
@@ -266,6 +324,10 @@ function PiSliderStep(
       key: 'pi-slider-step',
       className: `pi-slider-step ${cx(c.piSliderStep)}`,
       // ref: (r) => (this.refs.step = r),
+      ref: (r) => {
+        console.log(r);
+        setPiSliderStepRef(r);
+      },
     },
     [piSliderDots, piSliderMark]
   );

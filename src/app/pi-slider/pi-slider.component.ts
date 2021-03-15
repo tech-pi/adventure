@@ -50,7 +50,7 @@ export class PiSliderComponent implements OnInit, AfterViewInit {
       PiSliderSelector(
         this.sliderSelectorComponent.nativeElement,
         new Observable(),
-        this.mouseupS.asObservable(),
+        this.mouseupS.asObservable().pipe(tap(x=>console.warn('...uppppp'))),
         this.mousemoveS.asObservable()
       );
     }

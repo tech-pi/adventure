@@ -173,6 +173,7 @@ export function click(
     piReverse === piVertical ? data[0] - data[1] : data[2] + data[1] - data[0];
   let currRatio = (withReverseOffset / data[2]) * 100;
   // this.clickStepS.next(() =>
+  console.log(piSlider.freeClick(currRatio, marks, piSlider));
   return piSlider.freeClick(currRatio, marks, piSlider);
   // );
 }
@@ -272,4 +273,23 @@ export function handle2Mark(
   event.stopPropagation();
   if (piSlider.piDisabled) return;
   return piSlider.clickRailDot(value, piSlider);
+}
+export function changeFocus(
+  value: boolean,
+  piDisabled:boolean,
+  emitAfterChange:(value: number | number[]) => void,
+  modelValue?: number | number[],
+  reverse?: boolean,){
+    if (piDisabled) return;
+
+    // this.focus$.next(value);
+
+    if (!value && !L.isNil(modelValue))
+     emitAfterChange(
+        reverse && L.isArray(modelValue) ? (modelValue as number[]).reverse() : modelValue,
+      );
+
+
+
+
 }

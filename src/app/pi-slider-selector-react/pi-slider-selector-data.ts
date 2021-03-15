@@ -160,7 +160,7 @@ export const initSlider: PiSliderData = {
   piReverse: false,
   piVertical: false,
   piTooltipVisible: PiTooltipVisibleType.Default,
-  piTooltipPlacement: PiTooltipPlacementType.Top,
+  piTooltipPlacement: PiTooltipPlacementType.Bottom,
 };
 
 type PiModelMatcher<T> = T & {

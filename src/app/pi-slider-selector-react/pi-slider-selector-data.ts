@@ -146,7 +146,7 @@ export const initSlider: PiSliderData = {
     piMax: 3150,
     piLengthBase: { base: 5, minMul: 10 },
 
-    piStep: 0.01,
+    piStep: 10,
     piModel: {
       type: PiModelTypeName.Range,
       value: [1800, 155],
@@ -359,6 +359,7 @@ export function PiSlider(value: PiSliderData): PiSlider {
         piSlider.piMax
       );
       const piModel = rangeHandleModel(range);
+      console.log(piModel)
       return { ...piSlider, piModel };
     },
     controlTrackByKB: (event: KeyboardEvent, piSlider: PiSlider) => {

@@ -1,5 +1,6 @@
 import {
   createTrackAndHandleMatcher,
+  HandleDataType,
   PiMarkType,
   PiModelWithMatcher,
   PiSlider,
@@ -8,7 +9,46 @@ import {
   SliderMark,
 } from './pi-slider-selector-data';
 import * as L from 'lodash';
+import { keyframes } from '@angular/animations';
 
+function caculateDistance2Boundary(
+  element: HTMLElement
+): ElementBoundaryAndSize {
+  //输出一个element到浏览器上边界和左边界的距离、高度、宽度
+  const originElement = element;
+  let sliderTop = 0;
+  let sliderLeft = 0;
+  if (!element) return { sliderTop, sliderLeft, height: 0, width: 0 };
+  do {
+    sliderTop += element.offsetTop;
+    sliderLeft += element.offsetLeft;
+    element = element.offsetParent as HTMLElement;
+  } while (element);
+  return {
+    sliderTop,
+    sliderLeft,
+    height: originElement.offsetHeight,
+    width: originElement.offsetWidth,
+  };
+}
+function caculateHandleOffset(
+  e: MouseEvent,
+  slider: ElementBoundaryAndSize,
+  piReverse: boolean,
+  piVertical: boolean
+) {
+  let offset = 0;
+  const data = piVertical
+    ? [e.pageY, slider.sliderTop, slider.height]
+    : [e.pageX, slider.sliderLeft, slider.width];
+  const reverseEqualVertical = piReverse === piVertical;
+  offset = reverseEqualVertical
+    ? data[0] - data[1]
+    : data[2] + data[1] - data[0];
+  if (data[0] > data[2] + data[1]) offset = !reverseEqualVertical ? 0 : data[2];
+  if (data[0] < data[1]) offset = !reverseEqualVertical ? data[2] : 0;
+  return { offset, totalLength: data[2] };
+}
 export function valueRatio(value: number, piMin: number, piMax: number) {
   const diff = Math.abs(piMax - piMin);
   return (Math.abs(value - Math.min(piMin, piMax)) / diff) * 100;
@@ -50,7 +90,6 @@ export function createSliderStyle(
   handle: object[];
   marks: SliderMark[];
 } {
-  console.log('show style');
   function caculateTransformForHandle(position: string) {
     return `translate${['left', 'right'].includes(position) ? 'X' : 'Y'}(${
       ['left', 'top'].includes(position) ? '-' : ''
@@ -76,7 +115,6 @@ export function createSliderStyle(
   const modelSorted = !L.isNumber(piModel.value)
     ? (piModel.value as number[]).sort((a, b) => a - b)
     : piModel.value;
-  console.log('piModel Sorted', isRange, modelSorted);
   if (piMin > piMax) {
     throw Error('slider max must larger than min...');
   }
@@ -92,7 +130,6 @@ export function createSliderStyle(
   };
   let position = piVertical ? ['bottom', 'top'] : ['left', 'right'];
   position = piReverse ? position.reverse() : position;
-  console.log(piReverse, position[0]);
   const validMarks = L.isNil(piValidRange)
     ? []
     : piValidRange.map((item) => {
@@ -108,7 +145,6 @@ export function createSliderStyle(
         };
       });
   const marksWithValid = Object.assign({}, piMarks, ...validMarks);
-  console.log(marksWithValid);
   for (const key of [...Object.keys(marksWithValid)]) {
     const value = Number(key);
     if (
@@ -153,7 +189,6 @@ export function createSliderStyle(
       )
     )
   );
-  console.log(style);
   return style;
 }
 export function click(
@@ -200,59 +235,22 @@ export function dragTrack(
   down: {
     event: MouseEvent;
     piSlider: PiSlider;
+    slider: HTMLElement;
   }
 ) {
-  function caculateHandleOffset(
-    e: MouseEvent,
-    slider: ElementBoundaryAndSize,
-    piReverse: boolean,
-    piVertical: boolean
-  ) {
-    let offset = 0;
-    const data = piVertical
-      ? [e.pageY, slider.sliderTop, slider.height]
-      : [e.pageX, slider.sliderLeft, slider.width];
-    const reverseEqualVertical = piReverse === piVertical;
-    offset = reverseEqualVertical
-      ? data[0] - data[1]
-      : data[2] + data[1] - data[0];
-    if (data[0] > data[2] + data[1])
-      offset = !reverseEqualVertical ? 0 : data[2];
-    if (data[0] < data[1]) offset = !reverseEqualVertical ? data[2] : 0;
-    return { offset, totalLength: data[2] };
-  }
+  console.log(move, down);
 
-  function caculateDistance2Boundary(
-    element: HTMLElement
-  ): ElementBoundaryAndSize {
-    //输出一个element到浏览器上边界和左边界的距离、高度、宽度
-    const originElement = element;
-    let sliderTop = 0;
-    let sliderLeft = 0;
-    if (!element) return { sliderTop, sliderLeft, height: 0, width: 0 };
-    do {
-      sliderTop += element.offsetTop;
-      sliderLeft += element.offsetLeft;
-      element = element.offsetParent as HTMLElement;
-    } while (element);
-    return {
-      sliderTop,
-      sliderLeft,
-      height: originElement.offsetHeight,
-      width: originElement.offsetWidth,
-    };
-  }
   console.log(down.piSlider);
   const originSlider = down.piSlider;
   const moveData = caculateHandleOffset(
     move,
-    caculateDistance2Boundary(this.slider.nativeElement),
+    caculateDistance2Boundary(down.slider),
     down.piSlider.piReverse,
     down.piSlider.piVertical
   );
   const downData = caculateHandleOffset(
     down.event,
-    caculateDistance2Boundary(this.slider.nativeElement),
+    caculateDistance2Boundary(down.slider),
     down.piSlider.piReverse,
     down.piSlider.piVertical
   );
@@ -260,10 +258,72 @@ export function dragTrack(
     moveData.offset,
     downData.offset,
     down.piSlider.piModel,
-    originSlider
+    originSlider,
+    moveData
   );
   const moveRatio = (downData.offset - moveData.offset) / moveData.totalLength;
+  console.log(moveRatio);
   return down.piSlider.dragTrack(moveRatio, originSlider);
+}
+export function dragHandle(
+  data: {
+    event: MouseEvent;
+    handle: object;
+    marks: SliderMark[];
+    slider: HTMLElement;
+  },
+  piSlider: PiSlider
+) {
+
+  const moveData = caculateHandleOffset(
+    data.event,
+    caculateDistance2Boundary(data.slider),
+   piSlider.piReverse,
+    piSlider.piVertical
+  );
+  console.log(moveData, data.event);
+  return piSlider.dragHandle(
+    moveData.offset,
+    moveData.totalLength,
+    piSlider,
+    data.marks,
+    (!L.isNumber(piSlider.piModel.value)
+      ? {
+          type: data.handle['type'],
+          originModel: piSlider.piModel.value,
+        }
+      : { type:data.handle['type'] }) as HandleDataType
+  );
+}
+export function controlHandleByKB(
+  data: {
+    event: KeyboardEvent;
+    handle: object;
+  },
+  piSlider: PiSlider
+) {
+  data.event.preventDefault();
+  const reverseUnit = !piSlider.piReverse ? 1 : -1;
+  let value = data.handle['value'];
+  console.log(data.handle);
+  const unit = L.isNil(piSlider.piLengthBase)
+    ? piSlider.piStep
+    : piSlider.piLengthBase.base;
+
+  value += ['ArrowRight', 'ArrowUp'].includes(data.event.code)
+    ? unit * reverseUnit
+    : -1 * unit * reverseUnit;
+  if (value < piSlider.piMin || value > piSlider.piMax) return piSlider;
+  return piSlider.controlHandleByKB(
+    value,
+    data.handle['type'] === 'single'
+      ? { type: data.handle['type'] }
+      : {
+          type: data.handle['type'],
+          originModel: piSlider.piModel.value as number[],
+        },
+    piSlider
+  );
 }
 export function handle2Mark(
   event: Event,
@@ -276,20 +336,19 @@ export function handle2Mark(
 }
 export function changeFocus(
   value: boolean,
-  piDisabled:boolean,
-  emitAfterChange:(value: number | number[]) => void,
+  piDisabled: boolean,
+  emitAfterChange: (value: number | number[]) => void,
   modelValue?: number | number[],
-  reverse?: boolean,){
-    if (piDisabled) return;
+  reverse?: boolean
+) {
+  if (piDisabled) return;
 
-    // this.focus$.next(value);
+  // this.focus$.next(value);
 
-    if (!value && !L.isNil(modelValue))
-     emitAfterChange(
-        reverse && L.isArray(modelValue) ? (modelValue as number[]).reverse() : modelValue,
-      );
-
-
-
-
+  if (!value && !L.isNil(modelValue))
+    emitAfterChange(
+      reverse && L.isArray(modelValue)
+        ? (modelValue as number[]).reverse()
+        : modelValue
+    );
 }

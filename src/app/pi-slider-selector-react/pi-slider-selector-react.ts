@@ -1,8 +1,9 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import * as ReactDOM from 'react-dom';
-import { Observable, Subject } from 'rxjs';
+import { merge, Observable, Subject } from 'rxjs';
 import {
+  filter,
   map,
   switchAll,
   tap,
@@ -23,12 +24,21 @@ import * as L from 'lodash';
 import {
   changeFocus,
   click,
+  controlHandleByKB,
   createSliderStyle,
+  dragHandle,
   dragTrack,
   handle2Mark,
   judgePiDataValid,
 } from './pi-slider-selector-logic';
-import emmiter from '../pi-slider/events';
+import emmiter, {
+  downTrackS,
+  focusS,
+  keyDownHandleS,
+  mouseDownHandleS,
+  mouseMoveHandleS,
+} from '../pi-slider/events';
+
 
 const $E = React.createElement;
 
@@ -36,62 +46,67 @@ export function PiSliderSelector(
   e: HTMLElement,
   piData: Observable<PiSliderDataInputType>,
   mouseup$: Observable<MouseEvent>,
-  mousemove$: Observable<MouseEvent>
+  mousemove$: Observable<MouseEvent>,
+  keydown$: Observable<KeyboardEvent>
 ) {
   ReactDOM.render(
     $E(() => {
-      // const piData$ =
       useObservable(() =>
         piData.pipe(
           tap((value) => {
             judgePiDataValid(value);
-            setPiSlider(
+            wrappedSetPiSlider(
               piSlider.setSlider({ ...piSlider, ...value }, piSlider)
             );
-
-            setSliderStyle(
-              createSliderStyle(
-                piSlider.piVertical,
-                piSlider.piReverse,
-                piSlider.piMin,
-                piSlider.piMax,
-                piSlider.piModel,
-                piSlider.piMarks,
-                piSlider.piValidRange
-              )
-            );
           })
         )
       );
-      const downTrackS: Subject<{
-        event: MouseEvent;
-        piSlider: PiSlider;
-      }> = new Subject();
+      // const down:Subject<MouseEvent>=subje
+      // const downS:Subject<MouseEvent>=React.useContext(new Subject<MouseEvent>());
+      const [sliderRef, setSliderRef] = useState<HTMLElement>();
       const downTrack$ = downTrackS.asObservable();
-      useObservable(() =>
-        downTrack$.pipe(tap((x) => console.log('debug...', x)))
-      );
-      // useObservable(()=>mousemove$.pipe(tap(x=>console.log('move...',x))));
       const dragTrack$ = mousemove$.pipe(
-        tap((x) => console.log('...move')),
-        windowToggle(downTrack$.pipe(tap((x) => console.log('...down'))), () =>
-          mouseup$.pipe(tap((x) => console.log('...up', x)))
-        ),
-        tap((x) => console.log('dragTrack', x)),
+        windowToggle(downTrack$, () => mouseup$),
         switchAll(),
         withLatestFrom(downTrack$),
+        tap((x) => console.log('dragTrack', x)),
         map(([move, down]) => dragTrack(move, down))
       );
-      useObservable(() =>
-        dragTrack$.pipe(
-          tap((x) => {
-            console.log(x);
-            setPiSlider(x);
-          })
-        )
+      const keyControlHandle$ = keyDownHandleS.asObservable().pipe(
+        filter((x) =>
+          ['ArrowRight', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(
+            x.event.code
+          )
+        ),
+        windowToggle(focusS.asObservable().pipe(filter((x) => x.focus)), () =>
+          focusS.asObservable().pipe(filter((x) => !x.focus))
+        ),
+        switchAll(),
+        map((c) => controlHandleByKB(c, piSlider))
       );
-      const afterChangeE = (msg: number | number[]) =>
+      const downHandle$ = mouseDownHandleS.asObservable();
+      const dragHandle$ = mouseMoveHandleS.asObservable().pipe(
+        windowToggle(downHandle$.pipe(tap((x) => console.log('...down'))), () =>
+          mouseup$.pipe(tap((x) => console.log('...up')))
+        ),
+        switchAll(),
+        withLatestFrom(downHandle$),
+        tap((x) => console.log('dragHandle', x)),
+        map(([move, down]) => dragHandle(move, piSlider))
+      );
+      const afterChangeE = (msg: number | number[]) => {
         emmiter.emit('afterChange', msg);
+      }; //TODO:
+        const [selected, setSelected] = useState<object | null>(null);
+      const e=useObservable(() => mousemove$);
+      // const down$=state((
+      //   name:'down',
+      //   defaultValue:nu
+      // ));
+      useEffect(() => {
+
+        console.log(selected, e)
+      }, [ e]);
       const [piSlider, setPiSlider] = useState<PiSlider>(PiSlider(initSlider));
       const [sliderStyle, setSliderStyle] = useState<{
         track: object;
@@ -108,19 +123,52 @@ export function PiSliderSelector(
           piSlider.piValidRange
         )
       );
+      useObservable(() =>
+        merge(keyControlHandle$, dragTrack$, dragHandle$).pipe(
+          tap((x) => {
+            wrappedSetPiSlider(x);
+          })
+        )
+      );
+
+      useEffect(() => {
+        const afterChange = (msg: number | number[]) => {
+          console.log(msg);
+        };
+        emmiter.addListener('afterChange', afterChange);
+        return () => {
+          emmiter.removeListener('afterChange', afterChange);
+        };
+      });
+
       const wrappedSetPiSlider = (piSlider: PiSlider) => {
         setPiSlider(piSlider);
+        setSliderStyle(
+          createSliderStyle(
+            piSlider.piVertical,
+            piSlider.piReverse,
+            piSlider.piMin,
+            piSlider.piMax,
+            piSlider.piModel,
+            piSlider.piMarks,
+            piSlider.piValidRange
+          )
+        );
       };
 
-      console.log(piSlider, sliderStyle);
       return PiSliderSelectorWrapper(
         piSlider,
+        setSliderRef,
         sliderStyle,
         wrappedSetPiSlider,
         (event: MouseEvent) => {
-          console.log(event);
-          downTrackS.next({ event, piSlider });
+          downTrackS.next({ event, piSlider, slider: sliderRef });
         },
+        setSelected,
+        // (event: MouseEvent, handle: object, marks: SliderMark[]) => {
+        //   console.log(event, handle, marks);
+        //   mouseMoveHandleS.next({ event, handle, marks, slider: sliderRef });
+        // },
         afterChangeE
       );
     }),
@@ -129,18 +177,23 @@ export function PiSliderSelector(
 }
 function PiSliderSelectorWrapper(
   piSlider: PiSlider,
+  setSliderRef: (ref: HTMLElement) => void,
   sliderStyle: SliderStyleType,
   setPiSlider: (piSlider: PiSlider) => void,
   downTrack: (event: MouseEvent) => void,
-  emitAfterChange:(value:number|number[])=>void
+  // mouseMoveHandle: (
+  //   event: MouseEvent,
+  //   handle: object,
+  //   marks: SliderMark[]
+  // ) => void,
+  setSelected: (value: object) => void,
+  emitAfterChange: (value: number | number[]) => void
 ) {
   // const piRail = $E('div', {
   //   key: 'pi-slider-rail',
   //   piname: 'pi-slider-rail',
   //   className: 'pi-slider-rail ' + css(c.piSliderRail),
   // });
-  // var x;
-  // const stepR = React.createRef();
   const [piSliderStepRef, setPiSliderStepRef] = useState<HTMLElement>();
 
   const piSliderStep = PiSliderStep(
@@ -148,19 +201,17 @@ function PiSliderSelectorWrapper(
     piSlider,
     setPiSlider,
     setPiSliderStepRef
-  ); //TODO:
-
-  console.log(piSliderStepRef);
+  );
   const piSliderReverse = piControlReverseSlider(
     piSlider,
     sliderStyle,
     setPiSlider,
     downTrack,
+    // mouseMoveHandle,
+    setSelected,
     piSliderStep,
-
-  emitAfterChange
+    emitAfterChange
   );
-  // console.log(stepR,this.refs.step);
   return $E(
     'div',
     {
@@ -174,6 +225,9 @@ function PiSliderSelectorWrapper(
         piSlider.piVertical ? c.piSliderVertical : '',
         piSlider.piDisabled ? c.piSliderDisabled : ''
       )}`,
+      ref: (r) => {
+        setSliderRef(r);
+      },
       onClick: (e) =>
         setPiSlider(
           click(e.nativeEvent, piSliderStepRef, sliderStyle.marks, piSlider)
@@ -186,8 +240,14 @@ function piControlReverseSlider(
   piSlider: PiSlider,
   sliderStyle: SliderStyleType,
   setPiSlider: (piSlider: PiSlider) => void,
-
   downTrack: (event: MouseEvent) => void,
+  // mouseMoveHandle: (
+  //   event: MouseEvent,
+  //   handle: object,
+  //   marks: SliderMark[]
+  // ) => void,
+  setSelected: (value: object) => void,
+
   piSliderStep: React.DetailedReactHTMLElement<
     {
       key: string;
@@ -195,8 +255,7 @@ function piControlReverseSlider(
     },
     HTMLElement
   >,
-
-  emitAfterChange:(value:number|number[])=>void
+  emitAfterChange: (value: number | number[]) => void
 ) {
   //Rail
   const piSliderRail = $E('div', {
@@ -204,29 +263,35 @@ function piControlReverseSlider(
     piname: 'pi-slider-rail',
     className: `pi-slider-rail ${cx(c.piSliderRail)}`,
   });
-  console.log(c.piSliderRail);
   //Track
-  // const mousedownTrackF = (e: MouseEvent) => mousedownTrack(e, piSlider);
-
   const piSliderTrack = $E('div', {
     key: 'pi-slider-track',
     piname: 'pi-slider-track',
     tabIndex: 0,
     className: `pi-slider-track  ${cx(c.piSliderTrack, c.cursor)}`,
     style: sliderStyle.track,
-    // onClick:(e)=>{console.log('222222222',e)},
     onMouseDown: (e) => {
-      console.log(e);
       e.stopPropagation();
       downTrack(e.nativeEvent);
-    }, //TODO:
+    },
+    onKeyDown: (e) => {
+      e.preventDefault();
+      setPiSlider(piSlider.controlTrackByKB(e.nativeEvent, piSlider));
+    },
   });
   //handle
   const handleGroup = sliderStyle.handle.map((h, i) =>
-    PiSliderHandle(h, i, piSlider, sliderStyle.marks,emitAfterChange)
+    PiSliderHandle(
+      h,
+      i,
+      piSlider,
+      sliderStyle.marks,
+      // mouseMoveHandle,
+
+      setSelected,
+      emitAfterChange
+    )
   );
-  //step
-  // const piSliderStep = PiSliderStep(sliderStyle.marks, piSlider, setPiSlider);//TODO:
 
   return $E(
     'div',
@@ -236,7 +301,6 @@ function piControlReverseSlider(
       className: piSlider.piReverse
         ? `pi-slider-reverse ${cx(c.piSliderReverse)}`
         : '',
-      // ref: '',
     },
     [piSliderRail, piSliderTrack, handleGroup, piSliderStep]
   );
@@ -246,9 +310,16 @@ function PiSliderHandle(
   index: number,
   piSlider: PiSlider,
   marks: SliderMark[],
-  emitAfterChange:(value:number|number[])=>void
+  // mouseMoveHandle: (
+  //   event: MouseEvent,
+  //   handle: object,
+  //   marks: SliderMark[]
+  // ) => void,
+  setSelected: (value: object) => void,
+
+  emitAfterChange: (value: number | number[]) => void
 ) {
-  const [showHandleTooltip, setShowHandleTooltip] = useState<boolean>(false); //TODO:
+  const [showHandleTooltip, setShowHandleTooltip] = useState<boolean>(false);
   const tooltipArrowContent = $E('div', {
     key: 'tooltip-arrow-content' + index,
     className: 'tooltip-arrow-content',
@@ -287,8 +358,34 @@ function PiSliderHandle(
       onMouseEnter: () => setShowHandleTooltip(true),
       onMouseLeave: () => setShowHandleTooltip(false),
       onClick: (e) => e.stopPropagation(),
-      onFocus:()=>changeFocus(true,piSlider.piDisabled,emitAfterChange),
-      onBlur:()=>changeFocus(false,piSlider.piDisabled,emitAfterChange,piSlider.piModel.value,piSlider.piReverse)
+      onFocus: () => {
+        console.log('focus');
+        focusS.next({ focus: true, handle });
+        changeFocus(true, piSlider.piDisabled, emitAfterChange);
+      },
+      onBlur: () => {
+        console.log('blur');
+        focusS.next({ focus: false, handle });
+        changeFocus(
+          false,
+          piSlider.piDisabled,
+          emitAfterChange,
+          piSlider.piModel.value,
+          piSlider.piReverse
+        );
+      },
+      onMouseDown: (e) => {
+        setSelected(handle);
+        // mouseDownHandleS.next(e.nativeEvent);
+      },
+      onKeyDown: (e) => {
+        console.log('down');
+        keyDownHandleS.next({ event: e.nativeEvent, handle });
+      },
+      onMouseMove: (e) => {
+        // mouseMoveHandle(e.nativeEvent, handle, marks);
+        // console.warn('move', e);
+      },
     },
     handleTitle
   );
@@ -323,9 +420,7 @@ function PiSliderStep(
     {
       key: 'pi-slider-step',
       className: `pi-slider-step ${cx(c.piSliderStep)}`,
-      // ref: (r) => (this.refs.step = r),
       ref: (r) => {
-        console.log(r);
         setPiSliderStepRef(r);
       },
     },

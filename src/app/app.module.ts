@@ -8,7 +8,7 @@ import { PiSliderComponent } from './pi-slider/pi-slider.component';
 @NgModule({
   declarations: [
     AppComponent,
-    PiSliderComponent
+    PiSliderComponent,
   ],
   imports: [
     BrowserModule,

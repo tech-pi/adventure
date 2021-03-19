@@ -16,6 +16,14 @@ import {
 } from '../pi-slider-selector-react/pi-slider-selector-data';
 import { PiSliderSelector } from '../pi-slider-selector-react/pi-slider-selector-react';
 import * as L from 'lodash';
+import { FormSelector } from '../form-selector-react/form-selector-react';
+
+export interface ControlHandleByKBEventType {
+  event: KeyboardEvent;
+  type: 'min' | 'max' | 'single';
+  value: number;
+  piSlider: PiSlider;
+}
 @Component({
   selector: 'app-pi-slider',
   templateUrl: './pi-slider.component.html',
@@ -24,13 +32,16 @@ import * as L from 'lodash';
 export class PiSliderComponent implements OnInit, AfterViewInit {
   @ViewChild('sliderSelector')
   sliderSelectorComponent?: ElementRef;
+  @ViewChild('forForm')
+  formSelectorComponent?: ElementRef;
   clickStepS: Subject<() => PiSlider> = new Subject();
 
   mouseupS: Subject<MouseEvent> = new Subject();
-  mouseup$ = this.mouseupS.asObservable();
 
   mousemoveS: Subject<MouseEvent> = new Subject();
-  mousemove$ = this.mousemoveS.asObservable();
+
+  keydownS: Subject<KeyboardEvent> = new Subject();
+
   @Output()
   piOnAfterChange: EventEmitter<number | number[]> = new EventEmitter();
 
@@ -44,6 +55,13 @@ export class PiSliderComponent implements OnInit, AfterViewInit {
     this.mousemoveS.next(e);
   }
 
+  @HostListener('keydown', ['$event'])
+  keydown(e: KeyboardEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    this.keydownS.next(e);
+  }
+
   constructor() {}
   ngAfterViewInit(): void {
     if (this.sliderSelectorComponent) {
@@ -51,7 +69,13 @@ export class PiSliderComponent implements OnInit, AfterViewInit {
         this.sliderSelectorComponent.nativeElement,
         new Observable(),
         this.mouseupS.asObservable().pipe(tap(x=>console.warn('...uppppp'))),
-        this.mousemoveS.asObservable()
+        this.mousemoveS.asObservable(),
+        this.keydownS.asObservable()
+      );
+    }
+    if(this.formSelectorComponent){
+      FormSelector(
+        this.formSelectorComponent.nativeElement
       );
     }
   }
@@ -68,4 +92,7 @@ export class PiSliderComponent implements OnInit, AfterViewInit {
     //   )
     // );
   }
+  // afterChange(msg:number|number[]){
+  //   console.log(msg);
+  // }
 }
